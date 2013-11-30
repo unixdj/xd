@@ -18,7 +18,7 @@ func isalpha(b byte) bool { return b >= 'A' && b <= 'Z' || b >= 'a' && b <= 'z' 
 
 func makeIdent(s string) string {
 	id := make([]byte, 0, len(s)+1)
-	if isdigit(s[0]) {
+	if len(s) == 0 || isdigit(s[0]) {
 		id = append(id, '_')
 	}
 	for _, v := range s {
@@ -34,23 +34,28 @@ func makeIdent(s string) string {
 func help(e string) error {
 	os.Stderr.WriteString("Usage:\n  ")
 	os.Stderr.WriteString(os.Args[0])
-	os.Stderr.WriteString(" [-behio] [-c bytes] [-d off] [-g bytes] [-l len] [-s [-]off] [file ...]\n  ")
+	os.Stderr.WriteString(" [-beio] [-c bytes] [-d off] [-g bytes] [-l len] [-s off] [file ...]\n  ")
 	os.Stderr.WriteString(os.Args[0])
-	os.Stderr.WriteString(` -r [-d [-]<off>] [-O outfile] [file ...]
+	os.Stderr.WriteString(" -r [-d off] [-O outfile] [file ...]\n  ")
+	os.Stderr.WriteString(os.Args[0])
+	os.Stderr.WriteString(` -h
 Options:
-  -b        Binary dump
-  -c bytes  Number of bytes per line (default: 16, -b: 6, -i: 12)
-  -d off    Add <off> to displayed addresses; -r: subtract from address
-  -e        Little endian byte order hexdump
-  -g bytes  Number of bytes per group (default: 4, -b: 1, -i: 12)
-  -h        Show this help
-  -i        Dump in C include file format
-  -l len    Stop after <len> bytes
-  -o        Octal dump
-  -O        Output file to be opened without truncating
-  -r        Reverse big-endian hexdump
-  -s [-]off Seek <off> bytes in first input file (negative: from EOF)
+  -b         Binary dump
+  -c bytes   Number of bytes per line (default: 16, -b: 6, -i: 12)
+  -d off     Add <off> to displayed addresses; -r: to addresses read from input
+  -e         Little endian byte order
+  -g bytes   Number of bytes per group (default: 4, -b: 1, -i: 12)
+  -h         Show this help
+  -i         Dump in C include file format
+  -l len     Stop after <len> bytes
+  -o         Octal dump
+  -O outfile Output file to be opened without truncating
+  -r         Reverse big-endian hexdump
+  -s off     Seek <off> bytes in first input file (negative: from EOF)
 `)
+	if e == "true" { // -h given on command line
+		os.Exit(0)
+	}
 	os.Exit(2)
 	// NOTREACHED
 	return nil
@@ -114,6 +119,10 @@ func parseFlags() []string {
 	}
 	if g.dumper == Undumper {
 		g.rev = true
+		if g.le {
+			os.Stderr.WriteString("-e and -r are incompatible\n")
+			help("")
+		}
 	} else {
 		if g.cols == 0 {
 			g.cols = dumpers[g.dumper].defCols
