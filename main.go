@@ -12,24 +12,6 @@ import (
 
 const hexx = "0123456789abcdef"
 
-var bc = make(chan []byte, 16)
-
-func get(cols int) []byte {
-	select {
-	case b := <-bc:
-		return b
-	default:
-	}
-	return make([]byte, cols)
-}
-
-func put(b []byte) {
-	select {
-	case bc <- b:
-	default:
-	}
-}
-
 func hexb(buf []byte, b byte) {
 	buf[0], buf[1] = hexx[b>>4&0xf], hexx[b&0xf]
 }
@@ -48,15 +30,11 @@ func printable(c byte) byte {
 	return '.'
 }
 
-func cut(buf []byte, cut, skip int) (start, rest []byte) {
-	if cut > len(buf) {
+func cut(buf []byte, cut, skip int) ([]byte, []byte) {
+	if cut >= len(buf) {
 		return buf, nil
 	}
-	start, rest = buf[:cut], buf[cut:]
-	if skip <= len(rest) {
-		rest = rest[skip:]
-	}
-	return
+	return buf[:cut], buf[cut+skip:]
 }
 
 func dumpGroupBin(in, out, chars []byte) {
@@ -125,20 +103,28 @@ var (
 // cols=16 groupSize=4
 func dump(c <-chan []byte) {
 	var (
-		slen  = dumpers[g.dumper].lineLen()
-		gsadj = dumpers[g.dumper].groupLen()
-		//dumpGroup = dumpers[g.dumper].dump
+		slen   = dumpers[g.dumper].lineLen()
+		gsadj  = dumpers[g.dumper].groupLen()
+		buf    = make([]byte, g.cols)
 		outb   = make([]byte, slen)
+		stdin  = bufio.NewReader(os.Stdin)
 		stdout = bufio.NewWriter(os.Stdout)
+		err    error
+		n      int
 	)
-	for buf := range c {
+	for err != io.ErrUnexpectedEOF {
+		n, err = io.ReadFull(stdin, buf)
+		if err == io.EOF {
+			break
+		}
+
 		for k := range outb {
 			outb[k] = byte(' ')
 		}
 		hex32(outb[:8], g.pos)
 		outb[8] = ':'
 
-		in, out, chars := buf, outb[10:slen-g.cols-3], outb[slen-g.cols-1:]
+		in, out, chars := buf[:n], outb[10:slen-g.cols-3], outb[slen-g.cols-1:]
 		for len(in) > 0 {
 			var grp, out1, char1 []byte
 			grp, in = cut(in, g.group, 0)
@@ -148,29 +134,10 @@ func dump(c <-chan []byte) {
 		}
 
 		outb[slen-1] = '\n'
-		stdout.Write(outb[:])
-		g.pos += uint64(len(buf))
-		put(buf[:cap(buf)])
+		stdout.Write(outb)
+		g.pos += uint64(n)
 	}
 	stdout.Flush()
-}
-
-func feed(c chan<- []byte) {
-	var (
-		n     int
-		err   error
-		stdin = bufio.NewReader(os.Stdin)
-	)
-	for err != io.ErrUnexpectedEOF {
-		buf := get(g.cols)
-		n, err = io.ReadFull(stdin, buf)
-		if err == io.EOF {
-			put(buf)
-			break
-		}
-		c <- buf[:n]
-	}
-	close(c)
 }
 
 func help(e string) error {
@@ -244,6 +211,5 @@ func parseFlags() {
 func main() {
 	parseFlags()
 	var c = make(chan []byte, 8)
-	go feed(c)
 	dump(c)
 }
