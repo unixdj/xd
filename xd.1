@@ -1,0 +1,93 @@
+.Dd End of 2013
+.Dt XD 1 LOCAL
+.Sh NAME
+.Nm xd
+.Nd a fast hexdump
+.Sh SYNOPSIS
+.Nm
+.Op Fl behio
+.Op Fl c Ar bytes
+.Op Fl d Ar off
+.Op Fl g Ar bytes
+.Op Fl l Ar len
+.Op Fl s Ar \fR[\fP-\fR]\fPoff
+.Op Ar file ...
+.Nm
+.Fl r
+.Op Fl d Ar off
+.Op Fl O Ar outfile
+.Op Ar file ...
+.Sh DESCRIPTION
+.Nm
+dumps input files in hexadecimal, binary or octal.  With
+.Fl r ,
+.Nm
+converts a hexdump into binary.
+.Pp
+The options are as follows:
+.Bl -tag
+.It Fl b
+Dump in binary.
+.It Fl c Ar bytes
+Number of bytes ("columns") per line.  Default is 16 for hex or
+octal, 6 for binary and 12 for C-style dump.
+.It Fl d Ar off
+Add
+.Ar off
+to the displayed address.  In
+.Fl r
+(reverse) mode, subtract
+.Ar off
+from the address given on input.
+.It Fl e
+Dump groups in little endian byte order.
+.It Fl g Ar bytes
+Number of bytes per group.
+Each group is treated as a big engian number (unless
+.Fl e
+is given) and printed as such.
+Groups are separated from each other by one space character.
+Group size may be arbitrary large, though sizes larger than the
+line size (specified by
+.Fl c )
+are not too useful.
+Default is 4 for hex or octal, 1 for binary and 12 for C-style dump.
+.It Fl h
+Show help and exit.
+.It Fl i
+Dump in C include file format.
+.It Fl l Ar len
+Maximum input length.
+.Nm
+will stop dumping after
+.Ar len
+bytes.
+.It Fl o
+Dump in octal.
+.It Fl O Ar outfile
+Specify the output file to be opened without truncating.
+This option is mostly useful in combination with
+.Fl r ,
+resulting in patching of the file.
+.It Fl r
+Reverse operation: translate big endian hexadecimal dump into
+binary.  To write a new file or rewrite an existing one, use
+shell redirection
+.Ql > .
+To patch an existing file, use
+.Fl O .
+Appending a file using shell redirection
+.Ql ( >> )
+doesn't seem to work on
+.Ux .
+.Pp
+Input lines are processed independently of each other.
+.It Fl s Ar off
+Seek
+.Ar off
+bytes in the first input file.  When
+.Ar off
+is negative, a relative seek is performed from the end of file,
+otherwise an absolute seek is made.
+.El
+.Sh BUGS
