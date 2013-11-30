@@ -38,21 +38,30 @@ func undump(stdin *bufio.Scanner, stdout *os.File) {
 	var outb = make([]byte, 0, 64)
 	for stdin.Scan() {
 		var (
-			addr int64
-			pos  int
-			v    rune
-			line = stdin.Text()
+			addr     int64
+			pos      int
+			v        rune
+			nonempty bool
+			line     = stdin.Text()
 		)
+		if line == "*" {
+			continue
+		}
 		for pos, v = range line {
 			if dig, ok := hexdig(v); ok {
 				addr = addr<<4 | int64(dig)
 			} else {
+				nonempty = true
 				break
 			}
 		}
-		if pos == 0 || pos == len(line) {
+		if pos == 0 {
 			errSyntax(line, pos)
 		}
+		if !nonempty {
+			continue
+		}
+
 		var (
 			xxdStyle, spaced, hexed bool
 			dig                     byte
