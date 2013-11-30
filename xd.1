@@ -6,57 +6,83 @@
 .\" the LICENSE file or http://sam.zoy.org/wtfpl/ for more details.
 .Dd End of 2013
 .Dt XD 1 LOCAL
+.Os
 .Sh NAME
 .Nm xd
-.Nd a fast hexdump
+.Nd dump input files in hexadecimal, octal or binary, or reverse a hexadecimal dump operation
 .Sh SYNOPSIS
 .Nm
-.Op Fl behio
+.Op Fl beio
 .Op Fl c Ar bytes
 .Op Fl d Ar off
 .Op Fl g Ar bytes
 .Op Fl l Ar len
-.Op Fl s Ar \fR[\fP-\fR]\fPoff
+.Op Fl s [ Ar - ] Ns Ar off
 .Op Ar file ...
 .Nm
 .Fl r
 .Op Fl d Ar off
 .Op Fl O Ar outfile
 .Op Ar file ...
+.Nm
+.Fl h
 .Sh DESCRIPTION
 .Nm
-dumps input files in hexadecimal, binary or octal.  With
+displays input files as hexadecimal, octal or binary numbers.
+With
 .Fl r ,
 .Nm
-converts a hexdump into binary.
+converts a hexadecimal dump into a binary file or patches an
+existing file.
+Its output format and user interface were inspired by
+.Nm xxd .
+It's quite fast.
+.Pp
+When no input files are given,
+.Nm
+reads from
+.Pa stdin .
+Multiple input files are read sequentially and treated as one
+for all purposes, except that
+.Fl s
+only seeks in the first file.
+.Pp
+All numerical options may be given in decimal, octal (prefixed
+with
+.Ql 0 )
+or hexadecimal (prefixed with
+.Ql 0x ) .
 .Pp
 The options are as follows:
 .Bl -tag
 .It Fl b
 Dump in binary.
 .It Fl c Ar bytes
-Number of bytes ("columns") per line.  Default is 16 for hex or
-octal, 6 for binary and 12 for C-style dump.
+Number of bytes
+.No ( Do columns Dc )
+per line.  Must be between 1 and 2047, inclusive.
+Default is 16 for hex or octal, 6 for binary and 12 for C-style dump.
 .It Fl d Ar off
 Add
 .Ar off
-to the displayed address.  In
-.Fl r
-(reverse) mode, subtract
+to the displayed address.  In reverse mode
+.Fl ( r ) ,
+add
 .Ar off
-from the address given on input.
+to the addresses read from the input.  May be negative.
 .It Fl e
 Dump groups in little endian byte order.
 .It Fl g Ar bytes
-Number of bytes per group.
-Each group is treated as a big engian number (unless
-.Fl e
-is given) and printed as such.
-Groups are separated from each other by one space character.
-Group size may be arbitrary large, though sizes larger than the
-line size (specified by
+Number of bytes per group.  Must be between 1 and 2047, inclusive.
+If the number of bytes per line (see
 .Fl c )
-are not too useful.
+is not a multiple of
+.Ar bytes ,
+the last group on the line will be shorter.
+Each group is treated as a big endian number (unless
+.Fl e
+is given) and printed as one numeric value.
+Groups are separated from each other by one space character.
 Default is 4 for hex or octal, 1 for binary and 12 for C-style dump.
 .It Fl h
 Show help and exit.
@@ -65,9 +91,9 @@ Dump in C include file format.
 .It Fl l Ar len
 Maximum input length.
 .Nm
-will stop dumping after
+will stop dumping after at most
 .Ar len
-bytes.
+bytes.  Must be non-negative.
 .It Fl o
 Dump in octal.
 .It Fl O Ar outfile
@@ -76,24 +102,98 @@ This option is mostly useful in combination with
 .Fl r ,
 resulting in patching of the file.
 .It Fl r
-Reverse operation: translate big endian hexadecimal dump into
-binary.  To write a new file or rewrite an existing one, use
-shell redirection
-.Ql > .
+Reverse operation: translate hexadecimal dump in big endian byte
+order into binary.  To write a new file or rewrite an existing
+one, use shell redirection
+.Ql ( > ) .
 To patch an existing file, use
 .Fl O .
-Appending a file using shell redirection
+.Sy Warning :
+appending to a file using shell redirection
 .Ql ( >> )
-doesn't seem to work on
-.Ux .
+results in seeks failing silently on certain operating systems.
 .Pp
 Input lines are processed independently of each other.
+Lines consisting of a single
+.Ql *
+character are ignored.  Other input lines start with a
+hexadecimal address and an optional
+.Ql :\&
+(colon) character, followed by zero or more pairs of hexadecimal
+digits, optionally separated by space characters.
+Line processing stops at end of line or when a
+.Ql |\&
+character is encountered (as in
+.Tn POSIX
+.Xr hexdump 1
+output).  If the colon character is present after the address, an
+.Xr xxd 1 Ns
+- or
+.Nm Ns
+-style dump is assumed, and two consecutive space characters also
+terminate line processing.
+.Pp
+After the line is processed, if an offset has been specified by
+.Fl d ,
+it is added to the address.  The bytes represented by the
+hexadecimal digits are then written to the output file at the
+resulting address.
 .It Fl s Ar off
-Seek
+Seek to the offset
 .Ar off
-bytes in the first input file.  When
+in the first input file or
+.Pa stdin .
+When
 .Ar off
-is negative, a relative seek is performed from the end of file,
-otherwise an absolute seek is made.
+is negative, a relative seek from the end of file is performed,
+otherwise an absolute seek.  Displayed addresses start
+with the resulting absolute offset, possibly modified by
+.Fl d .
 .El
+.Sh DIAGNOSTICS
+.Nm
+will exit with one of the following statuses:
+.Bl -tag -width x -compact
+.It 0
+Success.
+.It 1
+An error occured.
+.It 2
+Invalid command line option.
+.El
+.Sh SEE ALSO
+.Xr hexdump 1 ,
+.Xr hd 1 ,
+.Xr od 1 ,
+.Xr xxd 1
 .Sh BUGS
+.Nm
+will happily accept combinations of options that result in some
+being ignored (e.g.,
+.Fl g
+when used with
+.Fl r ) .
+It will also accept nonsensical combinations (like
+.Fl O
+without
+.Fl r )
+and perform the requested nonsensical operation.
+Multiple input files don't make sense either.
+.Pp
+Decimal dump is not supported.  But you get arbitrarily large
+groups for this.  (If 2047-byte groups are not large enough for
+you, remove the limitation from the
+.Vt smallValue
+type in the source.)
+.Pp
+Character
+.No ( Do Tn ASCII Dc )
+dump is not supported.  Nor is
+.Tn  POSIX Ns
+-style
+output (only as input).  In general,
+.Nm
+is not very versatile.
+.Sh AUTHORS
+Vadim Vygonets
+.No < Ns Pa vadik@vygo.net Ns >

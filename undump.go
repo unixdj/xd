@@ -107,7 +107,7 @@ func undump(stdin *bufio.Scanner, stdout *os.File) {
 		if hexed {
 			errSyntax(line, len(line))
 		}
-		if _, err := stdout.WriteAt(outb, addr-g.pos); err != nil {
+		if _, err := stdout.WriteAt(outb, addr+g.pos); err != nil {
 			die(err)
 		}
 	}
