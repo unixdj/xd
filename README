@@ -1,0 +1,27 @@
+xd, a hexdump utility
+
+Copyright 2013 Vadim Vygonets.  Licensed under WTFPL 2.0.
+
+
+DESCRIPTION
+     xd displays input files as hexadecimal, octal or binary numbers.  With
+     -r, xd converts a hexadecimal dump into a binary file or patches an
+     existing file.  Its output format and user interface were inspired by
+     xxd.  It's quite fast.
+
+
+The world isn't in dire need of yet another hexdump.  But after
+looking at the source code for xxd, I was wondering how fast a
+Go implementation with a similar custom numerical output routine
+would be.  A prototype with a tight inner loop proved to be
+significantly faster than xxd, hd, od and hexdump, which
+surprised me -- the inner loop was not *that* tight.  Removing
+channels and adding buffered I/O made it a bit faster.  So I made
+it relatively feature-complete, wrote a man page and threw it on
+GitHub, as is the custom these days.
+
+Its feature set is similar to that of xxd (no EBCDIC though).
+Decimal output is not supported.  For more details, run "xd -h"
+or see the man page.  If you have any request, including "I'm on
+Windows and I want the man page rendered", mail me and I'll try
+to sort it out.  My e-mail address is on the man page.
