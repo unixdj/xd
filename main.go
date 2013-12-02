@@ -131,11 +131,17 @@ func dumpGroupC(in, out []byte) {
 	for _, v := range in {
 		out[0], out[1], out[4] = '0', 'x', ','
 		hexb(out[2:], v)
+		if len(out) < 6 {
+			return
+		}
 		out = out[6:]
 	}
 }
 
 func emptyString() string { return "" }
+
+func cLineLen() int  { return 1 + g.cols*6 }
+func cGroupLen() int { return g.group*6 - 1 }
 
 func cHeader() string {
 	if g.ident == "" {
@@ -152,17 +158,29 @@ func cFooter() string {
 		strconv.FormatInt(g.size, 10) + ";\n"
 }
 
+func goHeader() string {
+	if g.ident == "" {
+		g.ident = "dump"
+	}
+	return "package " + g.pkg + "\n\nvar " + g.ident + " = []byte{\n"
+}
+
+func goFooter() string {
+	return "};\n"
+}
+
 const (
 	HexDumper = iota
 	BinDumper
 	OctDumper
 	CDumper
+	GoDumper
 	Undumper = -1
 )
 
 var (
 	g = struct {
-		ident, outfile          string
+		ident, pkg, outfile     string
 		pos, seek, length, size int64
 		cols, group, dumper     int
 		le, rev                 bool
@@ -195,10 +213,11 @@ var (
 		func() int { return octDigits(g.group) },
 		emptyString, emptyString, prepare, dumpGroupOct,
 	}, { // CDumper
-		12, 12,
-		func() int { return 1 + g.cols*6 + (g.cols-1)/g.group },
-		func() int { return g.group * 6 },
+		12, 256, cLineLen, cGroupLen,
 		cHeader, cFooter, prepareC, dumpGroupC,
+	}, { // GoDumper
+		12, 256, cLineLen, cGroupLen,
+		goHeader, goFooter, prepareC, dumpGroupC,
 	}}
 )
 

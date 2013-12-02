@@ -9,15 +9,23 @@
 .Os
 .Sh NAME
 .Nm xd
-.Nd dump input files in hexadecimal, octal or binary, or reverse a hexadecimal dump operation
+.Nd dump input files in hexadecimal, octal, binary or source, or reverse a hexadecimal dump operation
 .Sh SYNOPSIS
 .Nm
-.Op Fl beio
+.Op Fl beo
 .Op Fl c Ar bytes
 .Op Fl d Ar off
 .Op Fl g Ar bytes
 .Op Fl l Ar len
-.Op Fl s [ Ar - ] Ns Ar off
+.Op Fl s Oo Cm - Oc Ns Ar off
+.Op Ar file ...
+.Nm
+.Fl C | G
+.Op Fl P Ar pkg
+.Op Fl V Ar var
+.Op Fl c Ar bytes
+.Op Fl l Ar len
+.Op Fl s Oo Cm - Oc Ns Ar off
 .Op Ar file ...
 .Nm
 .Fl r
@@ -28,7 +36,8 @@
 .Fl h
 .Sh DESCRIPTION
 .Nm
-displays input files as hexadecimal, octal or binary numbers.
+displays input files as hexadecimal, octal or binary numbers,
+or as C or Go source.
 With
 .Fl r ,
 .Nm
@@ -59,9 +68,24 @@ The options are as follows:
 Dump in binary.
 .It Fl c Ar bytes
 Number of bytes
-.No ( Do columns Dc )
-per line.  Must be between 1 and 2047, inclusive.
-Default is 16 for hex or octal, 6 for binary and 12 for C-style dump.
+.Dq ( columns )
+per line.  Must be between 1 and 2047, inclusive.  Default is 16
+for hex or octal, 6 for binary and 12 for C or Go source dump.
+.It Fl C
+Dump as C source code.  If a variable name is given with
+.Fl V
+or a
+.Ar file
+is specified on the command line,
+output C source code consisting of an array of
+.Vt char
+containing the input and an
+.Vt unsigned int
+containing its length; otherwise just dump input
+as comma-separated bytes in C/Go hexadecimal notation.
+.It Fl G
+Dump as a Go source file containing a slice of
+.Vt byte .
 .It Fl d Ar off
 Add
 .Ar off
@@ -72,8 +96,11 @@ add
 to the addresses read from the input.  May be negative.
 .It Fl e
 Dump groups in little endian byte order.
+Only relevant to numeric (hexadecimal, octal or binary) dump.
 .It Fl g Ar bytes
-Number of bytes per group.  Must be between 1 and 2047, inclusive.
+Number of bytes per group.
+Only relevant to numeric (hexadecimal, octal or binary) dump.
+Must be between 1 and 2047, inclusive.
 If the number of bytes per line (see
 .Fl c )
 is not a multiple of
@@ -83,11 +110,9 @@ Each group is treated as a big endian number (unless
 .Fl e
 is given) and printed as one numeric value.
 Groups are separated from each other by one space character.
-Default is 4 for hex or octal, 1 for binary and 12 for C-style dump.
+Default is 4 for hex or octal and 1 for binary.
 .It Fl h
 Show help and exit.
-.It Fl i
-Dump in C include file format.
 .It Fl l Ar len
 Maximum input length.
 .Nm
@@ -101,6 +126,11 @@ Specify the output file to be opened without truncating.
 This option is mostly useful in combination with
 .Fl r ,
 resulting in patching of the file.
+.It Fl P Ar pkg
+Use
+.Ar pkg
+as the package name for Go source dump.  Default is
+.Dq Li main .
 .It Fl r
 Reverse operation: translate hexadecimal dump in big endian byte
 order into binary.  To write a new file or rewrite an existing
@@ -149,6 +179,15 @@ is negative, a relative seek from the end of file is performed,
 otherwise an absolute seek.  Displayed addresses start
 with the resulting absolute offset, possibly modified by
 .Fl d .
+.It Fl V Ar var
+Use
+.Ar var
+as the variable name for C or Go source dump.  If none is given,
+a valid identifier is drived from the name of the first
+.Ar file
+given on the command line.  If neither is present, the default is
+.Dq Li dump
+for Go and an empty name for C.
 .El
 .Sh DIAGNOSTICS
 .Nm
@@ -162,17 +201,26 @@ An error occured.
 Invalid command line option.
 .El
 .Sh SEE ALSO
-.Xr hexdump 1 ,
 .Xr hd 1 ,
+.Xr hexdump 1 ,
 .Xr od 1 ,
 .Xr xxd 1
+.Sh AUTHORS
+.An "Vadim Vygonets"
+.Aq vadik@vygo.net
 .Sh BUGS
+Arguments of
+.Fl P
+and
+.Fl V
+are not checked for syntax.
+.Pp
 .Nm
 will happily accept combinations of options that result in some
 being ignored (e.g.,
-.Fl g
+.Fl d
 when used with
-.Fl r ) .
+.Fl C ) .
 It will also accept nonsensical combinations (like
 .Fl O
 without
@@ -187,13 +235,10 @@ you, remove the limitation from the
 type in the source.)
 .Pp
 Character
-.No ( Do Tn ASCII Dc )
+.Dq ( Tn ASCII )
 dump is not supported.  Nor is
-.Tn  POSIX Ns
+.Tn POSIX Ns
 -style
 output (only as input).  In general,
 .Nm
 is not very versatile.
-.Sh AUTHORS
-Vadim Vygonets
-.No < Ns Pa vadik@vygo.net Ns >

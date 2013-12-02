@@ -4,10 +4,10 @@ Copyright 2013 Vadim Vygonets.  Licensed under WTFPL 2.0.
 
 
 DESCRIPTION
-     xd displays input files as hexadecimal, octal or binary numbers.  With
-     -r, xd converts a hexadecimal dump into a binary file or patches an
-     existing file.  Its output format and user interface were inspired by
-     xxd.  It's quite fast.
+     xd displays input files as hexadecimal, octal or binary numbers, or as C
+     or Go source.  With -r, xd converts a hexadecimal dump into a binary file
+     or patches an existing file.  Its output format and user interface were
+     inspired by xxd.  It's quite fast.
 
 
 The world isn't in dire need of yet another hexdump.  But after

@@ -25,7 +25,7 @@ func isalpha(b byte) bool { return b >= 'A' && b <= 'Z' || b >= 'a' && b <= 'z' 
 
 func makeIdent(s string) string {
 	id := make([]byte, 0, len(s)+1)
-	if len(s) == 0 || isdigit(s[0]) {
+	if isdigit(s[0]) {
 		id = append(id, '_')
 	}
 	for _, v := range s {
@@ -41,24 +41,29 @@ func makeIdent(s string) string {
 func help(e string) error {
 	os.Stderr.WriteString("Usage:\n  ")
 	os.Stderr.WriteString(os.Args[0])
-	os.Stderr.WriteString(" [-beio] [-c bytes] [-d off] [-g bytes] [-l len] [-s off] [file ...]\n  ")
+	os.Stderr.WriteString(" [-beo] [-c bytes] [-d off] [-g bytes] [-l len] [-s off] [file ...]\n  ")
+	os.Stderr.WriteString(os.Args[0])
+	os.Stderr.WriteString(" -C | -G [-P pkg] [-V var] [-c bytes] [-l len] [-s off] [file ...]\n  ")
 	os.Stderr.WriteString(os.Args[0])
 	os.Stderr.WriteString(" -r [-d off] [-O outfile] [file ...]\n  ")
 	os.Stderr.WriteString(os.Args[0])
 	os.Stderr.WriteString(` -h
 Options:
   -b         Binary dump
-  -c bytes   Number of bytes per line (default: 16, -b: 6, -i: 12)
+  -c bytes   Number of bytes per line (default: 16, -b: 6, -C/-G: 12)
+  -C         Dump as C source array
   -d off     Add <off> to displayed addresses; -r: to addresses read from input
   -e         Little endian byte order
-  -g bytes   Number of bytes per group (default: 4, -b: 1, -i: 12)
+  -g bytes   Number of bytes per group (default: 4, -b: 1)
+  -G         Dump as Go source slice
   -h         Show this help
-  -i         Dump in C include file format
   -l len     Stop after <len> bytes
   -o         Octal dump
   -O outfile Output file to be opened without truncating
+  -P pkg     Go package name (default: "main")
   -r         Reverse big-endian hexdump
   -s off     Seek <off> bytes in first input file (negative: from EOF)
+  -V var     C/Go variable name (default: 1st filename or -C: none, -G: "dump")
 `)
 	if e == "true" { // -h given on command line
 		os.Exit(0)
@@ -97,7 +102,7 @@ func (v *int63Value) Set(s string) error {
 func setDumperValue(v int) conf.Value {
 	return conf.FuncValue(func(string) error {
 		if g.dumper != 0 {
-			return errors.New("-b, -i, -o and -r are incompatible")
+			return errors.New("-b, -C, -G, -o and -r are incompatible")
 		}
 		g.dumper = v
 		return nil
@@ -106,20 +111,24 @@ func setDumperValue(v int) conf.Value {
 
 func parseFlags() []string {
 	vars := []conf.Var{
-		{Flag: 'b', Kind: conf.NoArg, Val: setDumperValue(BinDumper)},
-		{Flag: 'c', Val: (*smallValue)(&g.cols)},
-		{Flag: 'd', Val: (*conf.Int64Value)(&g.pos)},
-		{Flag: 'g', Val: (*smallValue)(&g.group)},
-		{Flag: 'e', Kind: conf.NoArg, Val: (*conf.BoolValue)(&g.le)},
 		{Flag: 'h', Kind: conf.NoArg, Val: conf.FuncValue(help)},
-		{Flag: 'i', Kind: conf.NoArg, Val: setDumperValue(CDumper)},
-		{Flag: 'l', Val: (*int63Value)(&g.length)},
+		{Flag: 'b', Kind: conf.NoArg, Val: setDumperValue(BinDumper)},
 		{Flag: 'o', Kind: conf.NoArg, Val: setDumperValue(OctDumper)},
-		{Flag: 'O', Val: (*conf.StringValue)(&g.outfile)},
+		{Flag: 'C', Kind: conf.NoArg, Val: setDumperValue(CDumper)},
+		{Flag: 'G', Kind: conf.NoArg, Val: setDumperValue(GoDumper)},
 		{Flag: 'r', Kind: conf.NoArg, Val: setDumperValue(Undumper)},
+		{Flag: 'e', Kind: conf.NoArg, Val: (*conf.BoolValue)(&g.le)},
+		{Flag: 'c', Val: (*smallValue)(&g.cols)},
+		{Flag: 'g', Val: (*smallValue)(&g.group)},
+		{Flag: 'l', Val: (*int63Value)(&g.length)},
+		{Flag: 'd', Val: (*conf.Int64Value)(&g.pos)},
 		{Flag: 's', Val: (*conf.Int64Value)(&g.seek)},
+		{Flag: 'O', Val: (*conf.StringValue)(&g.outfile)},
+		{Flag: 'P', Val: (*conf.StringValue)(&g.pkg)},
+		{Flag: 'V', Val: (*conf.StringValue)(&g.ident)},
 	}
 	g.length = -1
+	g.pkg = "main"
 	if err := conf.GetOpt(vars); err != nil {
 		os.Stderr.WriteString(err.Error() + "\n")
 		help("")
@@ -137,7 +146,7 @@ func parseFlags() []string {
 		if g.group == 0 {
 			g.group = dumpers[g.dumper].defGroup
 		}
-		if len(conf.Args) != 0 {
+		if g.ident == "" && len(conf.Args) != 0 {
 			g.ident = makeIdent(conf.Args[0])
 		}
 	}
