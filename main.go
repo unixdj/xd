@@ -9,269 +9,158 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"io"
 	"os"
 	"strconv"
+
+	"github.com/unixdj/conf"
 )
 
-func hexb(buf []byte, b byte) {
-	const digits = "0123456789abcdef"
-	buf[0], buf[1] = digits[b>>4&0xf], digits[b&0xf]
+var g = struct {
+	ident, pkg, outfile     string
+	pos, seek, length, size int64
+	cols, group, dumper     int
+	le, rev                 bool
+}{
+	pkg:    "main",
+	length: -1,
 }
 
-func hex32(buf []byte, n int64) {
-	hexb(buf[0:], byte(n>>24))
-	hexb(buf[2:], byte(n>>16))
-	hexb(buf[4:], byte(n>>8))
-	hexb(buf[6:], byte(n))
+func die(err error) {
+	os.Stderr.WriteString(err.Error() + "\n")
+	os.Exit(1)
 }
 
-func printable(c byte) byte {
-	if c >= 0x20 && c < 0x7f {
-		return c
+func isdigit(r rune) bool { return r >= '0' && r <= '9' }
+func isalpha(r rune) bool { return r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' }
+
+func makeIdent(s string) string {
+	id := make([]byte, 0, len(s)+1)
+	if s != "" && isdigit(rune(s[0])) {
+		id = append(id, '_')
 	}
-	return '.'
-}
-
-func cut(buf []byte, size, skip int) ([]byte, []byte) {
-	if size < 0 {
-		size += len(buf)
-		if size > 0 {
-			return buf[size:], buf[:size-skip]
+	for _, v := range s {
+		var b byte = '_'
+		if isdigit(v) || isalpha(v) {
+			b = byte(v)
 		}
-	} else if size < len(buf) {
-		return buf[:size], buf[size+skip:]
+		id = append(id, b)
 	}
-	return buf, nil
+	return string(id)
 }
 
-func prepare(outb []byte) (out, chars []byte) {
-	for k := range outb {
-		outb[k] = ' '
+func help(v string) error {
+	os.Stderr.WriteString("Usage:\n  ")
+	os.Stderr.WriteString(os.Args[0])
+	os.Stderr.WriteString(" [-beo] [-c bytes] [-d off] [-g bytes] [-l len] [-s off] [file ...]\n  ")
+	os.Stderr.WriteString(os.Args[0])
+	os.Stderr.WriteString(" -C | -G [-P pkg] [-V var] [-c bytes] [-l len] [-s off] [file ...]\n  ")
+	os.Stderr.WriteString(os.Args[0])
+	os.Stderr.WriteString(" -r [-d off] [-O outfile] [file ...]\n  ")
+	os.Stderr.WriteString(os.Args[0])
+	os.Stderr.WriteString(` -h
+Options:
+  -b         Binary dump
+  -c bytes   Number of bytes per line (default: 16, -b: 6, -C/-G: 12)
+  -C         Dump as C source array
+  -d off     Add <off> to displayed addresses; -r: to addresses read from input
+  -e         Little endian byte order
+  -g bytes   Number of bytes per group (default: 4, -b: 1)
+  -G         Dump as Go source slice
+  -h         Show this help
+  -l len     Stop after <len> bytes
+  -o         Octal dump
+  -O outfile Output file to be opened without truncating
+  -P pkg     Go package name (default: "main")
+  -r         Reverse big-endian hexdump
+  -s off     Seek <off> bytes in first input file (negative: from EOF)
+  -V var     C/Go variable name (default: 1st filename or -C: none, -G: "dump")
+`)
+	if v == "true" { // -h given on command line
+		os.Exit(0)
 	}
-	hex32(outb, g.pos)
-	outb[8] = ':'
-	outb[len(outb)-1] = '\n'
-	return outb[10 : len(outb)-g.cols-3], outb[len(outb)-g.cols-1:]
+	os.Exit(2)
+	// NOTREACHED
+	return nil
 }
 
-func prepareC(outb []byte) (out, chars []byte) {
-	out = outb[1:]
-	for k := range out {
-		out[k] = ' '
+type smallValue int
+
+func (v *smallValue) Set(s string) error {
+	u, err := strconv.ParseUint(s, 0, 11)
+	if err != nil {
+		return err.(*strconv.NumError).Err
 	}
-	outb[0] = '\t'
-	outb[len(outb)-1] = '\n'
-	return
+	if u == 0 {
+		return errors.New("value cannot be zero")
+	}
+	*v = smallValue(u)
+	return nil
 }
 
-func dumpGroupBin(in, out []byte) {
-	var pos, adj = 0, 8
-	if g.le {
-		pos, adj = len(out)-8, -8
+type int63Value int64
+
+func (v *int63Value) Set(s string) error {
+	u, err := strconv.ParseUint(s, 0, 63)
+	if err != nil {
+		// strip fluff from strconf.ParseUint
+		return err.(*strconv.NumError).Err
 	}
-	for _, v := range in {
-		for i := pos + 7; i >= pos; i-- {
-			out[i] = '0' | v&1
-			v >>= 1
+	*v = int63Value(u)
+	return nil
+}
+
+func setDumperValue(v int) conf.Value {
+	return conf.FuncValue(func(string) error {
+		if g.dumper != 0 {
+			return errors.New("-b, -C, -G, -o and -r are incompatible")
 		}
-		pos += adj
-	}
+		g.dumper = v
+		return nil
+	})
 }
 
-func dumpGroup(in, out []byte) {
-	var pos, adj = 0, 2
-	if g.le {
-		pos, adj = len(out)-2, -2
+func parseFlags() []string {
+	var vars = []conf.Var{
+		{Flag: 'h', Kind: conf.NoArg, Val: conf.FuncValue(help)},
+		{Flag: 'b', Kind: conf.NoArg, Val: setDumperValue(BinDumper)},
+		{Flag: 'o', Kind: conf.NoArg, Val: setDumperValue(OctDumper)},
+		{Flag: 'C', Kind: conf.NoArg, Val: setDumperValue(CDumper)},
+		{Flag: 'G', Kind: conf.NoArg, Val: setDumperValue(GoDumper)},
+		{Flag: 'r', Kind: conf.NoArg, Val: setDumperValue(Undumper)},
+		{Flag: 'e', Kind: conf.NoArg, Val: (*conf.BoolValue)(&g.le)},
+		{Flag: 'c', Val: (*smallValue)(&g.cols)},
+		{Flag: 'g', Val: (*smallValue)(&g.group)},
+		{Flag: 'l', Val: (*int63Value)(&g.length)},
+		{Flag: 'd', Val: (*conf.Int64Value)(&g.pos)},
+		{Flag: 's', Val: (*conf.Int64Value)(&g.seek)},
+		{Flag: 'O', Val: (*conf.StringValue)(&g.outfile)},
+		{Flag: 'P', Val: (*conf.StringValue)(&g.pkg)},
+		{Flag: 'V', Val: (*conf.StringValue)(&g.ident)},
 	}
-	for _, v := range in {
-		hexb(out[pos:], v)
-		pos += adj
+	if err := conf.GetOpt(vars); err != nil {
+		os.Stderr.WriteString(err.Error() + "\n")
+		help("")
 	}
-}
-
-func octDigits(bytes int) int { return (bytes*8 + 2) / 3 }
-
-func dumpSubGroupOct(in, out []byte) {
-	var (
-		n  uint64
-		od = octDigits(len(in))
-	)
-	if g.le {
-		for k, v := range in {
-			n |= uint64(v) << uint(k<<3)
+	if g.dumper == Undumper {
+		g.rev = true
+		if g.le {
+			os.Stderr.WriteString("-e and -r are incompatible\n")
+			help("")
 		}
-		out = out[len(out)-od:]
 	} else {
-		for _, v := range in {
-			n = n<<8 | uint64(v)
+		if g.cols == 0 {
+			g.cols = dumpers[g.dumper].defCols
+		}
+		if g.group == 0 {
+			g.group = dumpers[g.dumper].defGroup
+		}
+		if g.ident == "" && len(conf.Args) != 0 {
+			g.ident = makeIdent(conf.Args[0])
 		}
 	}
-	for od > 0 {
-		od--
-		out[od] = '0' | byte(n)&7
-		n >>= 3
-	}
-}
-
-func dumpGroupOct(in, out []byte) {
-	var adj = -6
-	if g.le {
-		adj = 6
-	}
-	for len(in) > 0 {
-		var sub, out1 []byte
-		sub, in = cut(in, adj, 0)
-		out1, out = cut(out, -16, 0)
-		dumpSubGroupOct(sub, out1)
-	}
-}
-
-func dumpGroupC(in, out []byte) {
-	for _, v := range in {
-		out[0], out[1], out[4] = '0', 'x', ','
-		hexb(out[2:], v)
-		if len(out) < 6 {
-			return
-		}
-		out = out[6:]
-	}
-}
-
-func emptyString() string { return "" }
-
-func cLineLen() int  { return 1 + g.cols*6 }
-func cGroupLen() int { return g.group*6 - 1 }
-
-func cHeader() string {
-	if g.ident == "" {
-		return ""
-	}
-	return "char " + g.ident + "[] = {\n"
-}
-
-func cFooter() string {
-	if g.ident == "" {
-		return ""
-	}
-	return "};\nunsigned int " + g.ident + "_len = " +
-		strconv.FormatInt(g.size, 10) + ";\n"
-}
-
-func goHeader() string {
-	if g.ident == "" {
-		g.ident = "dump"
-	}
-	return "package " + g.pkg + "\n\nvar " + g.ident + " = []byte{\n"
-}
-
-func goFooter() string {
-	return "};\n"
-}
-
-const (
-	HexDumper = iota
-	BinDumper
-	OctDumper
-	CDumper
-	GoDumper
-	Undumper = -1
-)
-
-var (
-	g = struct {
-		ident, pkg, outfile     string
-		pos, seek, length, size int64
-		cols, group, dumper     int
-		le, rev                 bool
-	}{}
-
-	dumpers = []struct {
-		defCols, defGroup int
-		lineLen, groupLen func() int
-		header, footer    func() string
-		prepare           func(outb []byte) (out, chars []byte)
-		dump              func(in, out []byte)
-	}{{ // HexDumper
-		16, 4,
-		func() int { return 13 + g.cols*3 + (g.cols-1)/g.group },
-		func() int { return g.group * 2 },
-		emptyString, emptyString, prepare, dumpGroup,
-	}, { // BinDumper
-		6, 1,
-		func() int { return 13 + g.cols*9 + (g.cols-1)/g.group },
-		func() int { return g.group * 8 },
-		emptyString, emptyString, prepare, dumpGroupBin,
-	}, { // OctDumper
-		16, 4,
-		func() int {
-			return 13 +
-				g.cols/g.group*octDigits(g.group) +
-				octDigits(g.cols%g.group) +
-				(g.cols-1)/g.group + g.cols
-		},
-		func() int { return octDigits(g.group) },
-		emptyString, emptyString, prepare, dumpGroupOct,
-	}, { // CDumper
-		12, 256, cLineLen, cGroupLen,
-		cHeader, cFooter, prepareC, dumpGroupC,
-	}, { // GoDumper
-		12, 256, cLineLen, cGroupLen,
-		goHeader, goFooter, prepareC, dumpGroupC,
-	}}
-)
-
-func dump(stdin *bufio.Reader, stdout *bufio.Writer) {
-	var (
-		inb   = make([]byte, g.cols)
-		outb  = make([]byte, dumpers[g.dumper].lineLen())
-		gsadj = dumpers[g.dumper].groupLen()
-		n     int
-	)
-	_, err := stdout.WriteString(dumpers[g.dumper].header())
-	for err == nil {
-		if g.length != -1 && g.length < int64(len(inb)) {
-			if g.length == 0 {
-				break
-			}
-			inb = inb[:g.length]
-		}
-
-		n, err = io.ReadFull(stdin, inb)
-		if err != nil && err != io.ErrUnexpectedEOF {
-			break
-		}
-
-		in := inb[:n]
-		out, chars := dumpers[g.dumper].prepare(outb)
-		if len(chars) != 0 {
-			for k, v := range in {
-				chars[k] = printable(v)
-			}
-		}
-		for len(in) > 0 {
-			var grp, out1 []byte
-			grp, in = cut(in, g.group, 0)
-			out1, out = cut(out, gsadj, 1)
-			dumpers[g.dumper].dump(grp, out1)
-		}
-
-		_, err = stdout.Write(outb)
-		g.pos += int64(n)
-		g.size += int64(n)
-		if g.length != -1 {
-			g.length -= int64(n)
-		}
-	}
-	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
-		die(err)
-	}
-	if _, err = stdout.WriteString(dumpers[g.dumper].footer()); err != nil {
-		die(err)
-	}
-	if err = stdout.Flush(); err != nil {
-		die(err)
-	}
+	return conf.Args
 }
 
 func main() {
