@@ -5,7 +5,7 @@ all: $(CATMAN)
 	go build
 
 $(CATMAN): $(MAN)
-	nroff -c -mdoc $< >$@
+	nroff -c -mdoc $(MAN) >$@
 
 clean:
 	-rm -rf $(CATMAN)
