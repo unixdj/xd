@@ -323,7 +323,7 @@ func main() {
 	// open output file
 	if g.outfile != "" {
 		var err error
-		stdout, err = os.OpenFile(g.outfile, os.O_WRONLY, 0666)
+		stdout, err = os.OpenFile(g.outfile, os.O_WRONLY|os.O_CREATE, 0666)
 		if err != nil {
 			die(err)
 		}
