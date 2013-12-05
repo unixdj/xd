@@ -13,6 +13,7 @@ import (
 	"strconv"
 )
 
+// Dumpers
 const (
 	HexDumper = iota
 	BinDumper
@@ -62,11 +63,13 @@ var dumpers = []struct {
 	},
 }
 
+// hexb prints a byte as two hex digite.
 func hexb(buf []byte, b byte) {
 	const digits = "0123456789abcdef"
 	buf[0], buf[1] = digits[b>>4&0xf], digits[b&0xf]
 }
 
+// hex32 prints a 32 bit number in hex.
 func hex32(buf []byte, n int64) {
 	hexb(buf[0:], byte(n>>24))
 	hexb(buf[2:], byte(n>>16))
@@ -74,6 +77,12 @@ func hex32(buf []byte, n int64) {
 	hexb(buf[6:], byte(n))
 }
 
+// cut cuts a buffer of size bytes from buf, returning the cut
+// buffer and the remainder.  If size is negative, cut cuts -size
+// bytes from the end.  If the size is bigger than length of buf,
+// cut returns the whole buf with a nil remainder.  If skip is 1,
+// an additional byte is cut from the remainder.  skip must be 0
+// or 1.
 func cut(buf []byte, size, skip int) ([]byte, []byte) {
 	if size < 0 {
 		size += len(buf)
@@ -86,6 +95,7 @@ func cut(buf []byte, size, skip int) ([]byte, []byte) {
 	return buf, nil
 }
 
+// prepare cleans outb for hex, binary or octal dump.
 func prepare(outb []byte) (out, chars []byte) {
 	for k := range outb {
 		outb[k] = ' '
@@ -96,6 +106,7 @@ func prepare(outb []byte) (out, chars []byte) {
 	return outb[10 : len(outb)-g.cols-3], outb[len(outb)-g.cols-1:]
 }
 
+// dumpGroupBin dumps a group from in into out in binary.
 func dumpGroupBin(in, out []byte) {
 	var pos, adj = 0, 8
 	if g.le {
@@ -110,6 +121,7 @@ func dumpGroupBin(in, out []byte) {
 	}
 }
 
+// dumpGroup dumps a group from in into out in hex.
 func dumpGroup(in, out []byte) {
 	var pos, adj = 0, 2
 	if g.le {
@@ -123,6 +135,7 @@ func dumpGroup(in, out []byte) {
 
 func octDigits(bytes int) int { return (bytes*8 + 2) / 3 }
 
+// dumpGroupBin dumps a group of 1 to 6 bytes from in into out in octal.
 func dumpSubGroupOct(in, out []byte) {
 	var (
 		n  uint64
@@ -145,6 +158,7 @@ func dumpSubGroupOct(in, out []byte) {
 	}
 }
 
+// dumpGroupBin dumps a group from in into out in octal.
 func dumpGroupOct(in, out []byte) {
 	var adj = -6
 	if g.le {
@@ -158,11 +172,13 @@ func dumpGroupOct(in, out []byte) {
 	}
 }
 
+// emptyString returns "".
 func emptyString() string { return "" }
 
 func cLineLen() int  { return 1 + g.cols*6 }
 func cGroupLen() int { return g.group*6 - 1 }
 
+// prepareC cleans outb for C or Go dump.
 func prepareC(outb []byte) (out, chars []byte) {
 	out = outb[1:]
 	for k := range out {
@@ -173,6 +189,8 @@ func prepareC(outb []byte) (out, chars []byte) {
 	return
 }
 
+// dumpGroupC dumps a group from in into out as C/Go hexadecomal
+// numeric literals.
 func dumpGroupC(in, out []byte) {
 	for _, v := range in {
 		out[0], out[1], out[4] = '0', 'x', ','
@@ -184,6 +202,7 @@ func dumpGroupC(in, out []byte) {
 	}
 }
 
+// cHeader returns the header for C dump.
 func cHeader() string {
 	if g.ident == "" {
 		return ""
@@ -191,6 +210,7 @@ func cHeader() string {
 	return "char " + g.ident + "[] = {\n"
 }
 
+// cFooter returns the footer for C dump.
 func cFooter() string {
 	if g.ident == "" {
 		return ""
@@ -199,6 +219,7 @@ func cFooter() string {
 		strconv.FormatInt(g.size, 10) + ";\n"
 }
 
+// goHeader returns the header for Go dump.
 func goHeader() string {
 	if g.ident == "" {
 		g.ident = "dump"
@@ -206,10 +227,13 @@ func goHeader() string {
 	return "package " + g.pkg + "\n\nvar " + g.ident + " = []byte{\n"
 }
 
+// goFooter returns the footer for Go dump.
 func goFooter() string {
 	return "};\n"
 }
 
+// printable returns c if it's a printable ASCII character and a
+// dot otherwise.
 func printable(c byte) byte {
 	if c >= 0x20 && c < 0x7f {
 		return c
@@ -217,6 +241,7 @@ func printable(c byte) byte {
 	return '.'
 }
 
+// dump dumps stdin to stdout using dumper and parameters set in g.
 func dump(stdin *bufio.Reader, stdout *bufio.Writer) {
 	var (
 		inb   = make([]byte, g.cols)

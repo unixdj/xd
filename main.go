@@ -17,11 +17,13 @@ import (
 	"github.com/unixdj/conf"
 )
 
+// g is global state, initially set from flags.
 var g = struct {
-	ident, pkg, outfile     string
-	pos, seek, length, size int64
-	cols, group, dumper     int
-	le, rev                 bool
+	ident, pkg, outfile string // -V, -P, -O
+	pos, seek, length   int64  // -d + size, -s, -l - size || -1
+	size                int64  // bytes read so far
+	cols, group, dumper int    // -c, -g, -[bCGor] || HexDumper
+	le, rev             bool   // -e, (-r)
 }{
 	pkg:    "main",
 	length: -1,
@@ -35,6 +37,8 @@ func die(err error) {
 func isdigit(r rune) bool { return r >= '0' && r <= '9' }
 func isalpha(r rune) bool { return r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' }
 
+// makeIdent makes an identifier valid in both C and Go out of s
+// by replacing invalid characters with an underscore.
 func makeIdent(s string) string {
 	id := make([]byte, 0, len(s)+1)
 	if s != "" && isdigit(rune(s[0])) {
@@ -50,6 +54,7 @@ func makeIdent(s string) string {
 	return string(id)
 }
 
+// help prints help and exits.
 func help(v string) error {
 	os.Stderr.WriteString("Usage:\n  ")
 	os.Stderr.WriteString(os.Args[0])
@@ -85,6 +90,8 @@ Options:
 	return nil
 }
 
+// smallValue is a conf.Value representing a small strictly
+// positive integer.
 type smallValue int
 
 func (v *smallValue) Set(s string) error {
@@ -99,6 +106,8 @@ func (v *smallValue) Set(s string) error {
 	return nil
 }
 
+// int63Value is a conf.Value representing a non-negative integer
+// that fits into int64.
 type int63Value int64
 
 func (v *int63Value) Set(s string) error {
@@ -111,6 +120,8 @@ func (v *int63Value) Set(s string) error {
 	return nil
 }
 
+// setDumperValue returns a conf.Value whose Set method sets
+// g.dumper to v.
 func setDumperValue(v int) conf.Value {
 	return conf.FuncValue(func(string) error {
 		if g.dumper != 0 {

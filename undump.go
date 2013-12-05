@@ -13,6 +13,9 @@ import (
 	"os"
 )
 
+// hexdig parses the hexadecimal digit in r.  If parsing was
+// successful, hexdig returns the value of hexadecimal digit r
+// and true.  Otherwise it returns 0 and false.
 func hexdig(r rune) (byte, bool) {
 	switch {
 	case r >= '0' && r <= '9':
@@ -25,7 +28,8 @@ func hexdig(r rune) (byte, bool) {
 	return 0, false
 }
 
-func errSyntax(s string, pos int) {
+// dieSyntax prints a syntax error message and exits.
+func dieSyntax(s string, pos int) {
 	var e string
 	if pos == len(s) {
 		e += "syntax error at EOL: " + s
@@ -36,9 +40,13 @@ func errSyntax(s string, pos int) {
 	die(errors.New(e))
 }
 
+// undump parses a hexdump from stdin and writes the resulting
+// bytes to stdout.
+//
 // syntax:
 //	[0-9A-Fa-f]+:( ?[0-9A-Fa-f]{2})(  .*)?
 //	[0-9A-Fa-f]+ ([0-9A-Fa-f]{2} *)([|].*)?
+//	\*
 // i.e. if address followed by a colon, parse until a double
 // space, otherwise until a pipe character; or EOL in both cases.
 func undump(stdin *bufio.Scanner, stdout *os.File) {
@@ -52,7 +60,7 @@ func undump(stdin *bufio.Scanner, stdout *os.File) {
 			line     = stdin.Text()
 		)
 		if line == "*" {
-			continue
+			continue // XXX: good for xxd but not POSIX hexdump
 		}
 		for pos, v = range line {
 			if dig, ok := hexdig(v); ok {
@@ -63,7 +71,7 @@ func undump(stdin *bufio.Scanner, stdout *os.File) {
 			}
 		}
 		if pos == 0 {
-			errSyntax(line, pos)
+			dieSyntax(line, pos)
 		}
 		if !nonempty {
 			continue
@@ -86,7 +94,7 @@ func undump(stdin *bufio.Scanner, stdout *os.File) {
 					outb = append(outb, dig<<4|d2)
 					hexed = false
 				} else {
-					errSyntax(line, pos+k)
+					dieSyntax(line, pos+k)
 				}
 			case v == ' ':
 				if xxdStyle {
@@ -100,12 +108,12 @@ func undump(stdin *bufio.Scanner, stdout *os.File) {
 			default:
 				spaced = false
 				if dig, hexed = hexdig(v); !hexed {
-					errSyntax(line, pos+k)
+					dieSyntax(line, pos+k)
 				}
 			}
 		}
 		if hexed {
-			errSyntax(line, len(line))
+			dieSyntax(line, len(line))
 		}
 		if _, err := stdout.WriteAt(outb, addr+g.pos); err != nil {
 			die(err)
